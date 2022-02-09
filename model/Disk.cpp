@@ -171,17 +171,44 @@ status_t Disk::create() {
 
     readMetadata();
     readPartitions();
+#ifdef VOLD_EX
+#ifdef UMS
+    mSharedCount = 0;
+#endif
+    /* SPRD: add for usb otg @{ */
+    if (mNickname == "usbdisk") {
+        LOG(DEBUG) << StringPrintf("start check thread for usbdisk:%u,%u", major(mDevice), minor(mDevice));
+        startDiskCheckThread();
+    }
+    /* @} */
+#endif
     return OK;
 }
 
 status_t Disk::destroy() {
     CHECK(mCreated);
+#ifdef VOLD_EX
+#ifdef UMS
+    mIsDestroying = true;
+#endif
+#endif
     destroyAllVolumes();
     mCreated = false;
 
     auto listener = VolumeManager::Instance()->getListener();
     if (listener) listener->onDiskDestroyed(getId());
-
+#ifdef VOLD_EX
+#ifdef UMS
+    mSharedCount = 0;
+    mIsDestroying = false;
+#endif
+    /* SPRD: add for usb otg @{ */
+    if (mNickname == "usbdisk") {
+        LOG(DEBUG) << StringPrintf("stop check thread for usbdisk:%u,%u", major(mDevice), minor(mDevice));
+        stopDiskCheckThread();
+    }
+    /* @} */
+#endif
     return OK;
 }
 
@@ -197,6 +224,12 @@ void Disk::createPublicVolume(dev_t device) {
     }
 
     mVolumes.push_back(vol);
+#ifdef VOLD_EX
+    /* SPRD: add for set link name for mount path @{ */
+    int partIndex = minor(device) - minor(mDevice);
+    setVolLinkName(partIndex, vol);
+    /* @} */
+#endif
     vol->setDiskId(getId());
     vol->create();
 }
@@ -227,6 +260,12 @@ void Disk::createPrivateVolume(dev_t device, const std::string& partGuid) {
     }
 
     mVolumes.push_back(vol);
+#ifdef VOLD_EX
+    /* SPRD: add for set link name @{ */
+    int partIndex = minor(device) - minor(mDevice);
+    setVolLinkName(partIndex, vol);
+    /* @} */
+#endif
     vol->setDiskId(getId());
     vol->setPartGuid(partGuid);
     vol->create();
@@ -389,6 +428,10 @@ status_t Disk::readPartitions() {
                 }
 
                 switch (type) {
+#ifdef VOLD_EX
+                    case 0x01: // FAT32
+                    case 0x04: // FAT16 < 32MB
+#endif
                     case 0x06:  // FAT16
                     case 0x07:  // HPFS/NTFS/exFAT
                     case 0x0b:  // W95 FAT32 (LBA)
@@ -396,6 +439,8 @@ status_t Disk::readPartitions() {
                     case 0x0e:  // W95 FAT16 (LBA)
                         createPublicVolume(partDevice);
                         break;
+                     default:
+			foundParts=false;
                 }
             } else if (table == Table::kGpt) {
                 if (++it == split.end()) continue;
@@ -614,6 +659,10 @@ int Disk::getMaxMinors() {
     LOG(ERROR) << "Unsupported block major type " << majorId;
     return -ENOTSUP;
 }
+
+#ifdef VOLD_EX
+#include "DiskEx.cpp"
+#endif
 
 }  // namespace vold
 }  // namespace android

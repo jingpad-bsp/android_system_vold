@@ -59,6 +59,9 @@
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 
+#include <cutils/properties.h>
+#include <bootloader_message/bootloader_message.h>
+
 using android::base::StringPrintf;
 using android::fs_mgr::GetEntryForMountPoint;
 using android::vold::kEmptyAuthentication;
@@ -335,6 +338,19 @@ static bool load_all_de_keys() {
     return true;
 }
 
+static bool reboot_into_recovery(const std::vector<std::string>& options) {
+    LOG(ERROR) << "Rebooting into recovery";
+    std::string err;
+    if (!write_bootloader_message(options, &err)) {
+        return false;
+    }
+    if (property_set("sys.powerctl", "reboot,recovery")) {
+        LOG(ERROR) << "Failed to reboot into recovery";
+        return false;
+    }
+    return true;
+}
+
 bool fscrypt_initialize_global_de() {
     LOG(INFO) << "fscrypt_initialize_global_de";
 
@@ -346,7 +362,8 @@ bool fscrypt_initialize_global_de() {
     PolicyKeyRef device_ref;
     if (!android::vold::retrieveAndInstallKey(true, kEmptyAuthentication, device_key_path,
                                               device_key_temp, &device_ref.key_raw_ref))
-        return false;
+        return reboot_into_recovery({"--prompt_and_wipe_data", "--reason=fscrypt_initialize_global_de" +
+                                     android::base::StringPrintf(" err code=%d", android::vold::err_code)});
     get_data_file_encryption_modes(&device_ref);
 
     std::string modestring = device_ref.contents_mode + ":" + device_ref.filenames_mode;
@@ -370,7 +387,10 @@ bool fscrypt_init_user0() {
         if (!prepare_dir(user_key_dir + "/ce", 0700, AID_ROOT, AID_ROOT)) return false;
         if (!prepare_dir(user_key_dir + "/de", 0700, AID_ROOT, AID_ROOT)) return false;
         if (!android::vold::pathExists(get_de_key_path(0))) {
-            if (!create_and_install_user_keys(0, false)) return false;
+            if (!create_and_install_user_keys(0, false)) {
+                return reboot_into_recovery({"--prompt_and_wipe_data", "--reason=fscrypt_init_user0" +
+                                             android::base::StringPrintf(" err code=%d", android::vold::err_code)});
+            }
         }
         // TODO: switch to loading only DE_0 here once framework makes
         // explicit calls to install DE keys for secondary users
@@ -604,7 +624,8 @@ bool fscrypt_unlock_user_key(userid_t user_id, int serial, const std::string& to
         android::vold::KeyAuthentication auth(token, secret);
         if (!read_and_install_user_ce_key(user_id, auth)) {
             LOG(ERROR) << "Couldn't read key for " << user_id;
-            return false;
+            return reboot_into_recovery({"--prompt_and_wipe_data", "--reason=Couldn't read key" +
+                                         android::base::StringPrintf(" err code=%d", android::vold::err_code)});
         }
     } else {
         // When in emulation mode, we just use chmod. However, we also

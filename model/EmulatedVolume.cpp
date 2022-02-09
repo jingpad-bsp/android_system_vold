@@ -130,7 +130,7 @@ status_t EmulatedVolume::doUnmount() {
     // the FUSE process first, most file system operations will return
     // ENOTCONN until the unmount completes. This is an exotic and unusual
     // error code and might cause broken behaviour in applications.
-    KillProcessesUsingPath(getPath());
+    //KillProcessesUsingPath(getPath());
     ForceUnmount(mFuseDefault);
     ForceUnmount(mFuseRead);
     ForceUnmount(mFuseWrite);

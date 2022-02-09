@@ -67,6 +67,9 @@ status_t Check(const std::string& source) {
         cmd.push_back("-y");
         cmd.push_back(source);
 
+#ifdef VOLD_EX
+retry:
+#endif
         // Fat devices are currently always untrusted
         rc = ForkExecvp(cmd, nullptr, sFsckUntrustedContext);
 
@@ -87,10 +90,17 @@ status_t Check(const std::string& source) {
                 return -1;
 
             case 4:
+#ifdef VOLD_EX
+            if (++pass <= 3) {
+                LOG(WARNING) <<"Filesystem modified - rechecking (pass " << pass << ")";
+                goto retry;
+            }
+#else
                 if (pass++ <= 3) {
                     LOG(WARNING) << "Filesystem modified - rechecking (pass " << pass << ")";
                     continue;
                 }
+#endif
                 LOG(ERROR) << "Failing check after too many rechecks";
                 errno = EIO;
                 return -1;

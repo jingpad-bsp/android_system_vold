@@ -54,6 +54,7 @@ extern "C" {
 namespace android {
 namespace vold {
 
+int err_code = 0;
 const KeyAuthentication kEmptyAuthentication{"", ""};
 
 static constexpr size_t AES_KEY_BYTES = 32;
@@ -452,40 +453,74 @@ bool pathExists(const std::string& path) {
 bool storeKey(const std::string& dir, const KeyAuthentication& auth, const KeyBuffer& key) {
     if (TEMP_FAILURE_RETRY(mkdir(dir.c_str(), 0700)) == -1) {
         PLOG(ERROR) << "key mkdir " << dir;
+        err_code = FBE_ERR_PATH_MKDIR;
         return false;
     }
-    if (!writeStringToFile(kCurrentVersion, dir + "/" + kFn_version)) return false;
+    if (!writeStringToFile(kCurrentVersion, dir + "/" + kFn_version)) {
+        err_code = FBE_ERR_WRITE_VERSION;
+        return false;
+    }
     std::string secdiscardable_hash;
-    if (!createSecdiscardable(dir + "/" + kFn_secdiscardable, &secdiscardable_hash)) return false;
+    if (!createSecdiscardable(dir + "/" + kFn_secdiscardable, &secdiscardable_hash)) {
+        err_code = FBE_ERR_WRITE_SEC;
+        return false;
+    }
     std::string stretching = getStretching(auth);
-    if (!writeStringToFile(stretching, dir + "/" + kFn_stretching)) return false;
+    if (!writeStringToFile(stretching, dir + "/" + kFn_stretching)) {
+        err_code = FBE_ERR_WRITE_STRETCHING;
+        return false;
+    }
     std::string salt;
     if (stretchingNeedsSalt(stretching)) {
         if (ReadRandomBytes(SALT_BYTES, salt) != OK) {
             LOG(ERROR) << "Random read failed";
+            err_code = FBE_ERR_RANDOM_READ;
             return false;
         }
-        if (!writeStringToFile(salt, dir + "/" + kFn_salt)) return false;
+        if (!writeStringToFile(salt, dir + "/" + kFn_salt)) {
+            err_code = FBE_ERR_WRITE_SALT;
+            return false;
+        }
     }
     std::string appId;
-    if (!generateAppId(auth, stretching, salt, secdiscardable_hash, &appId)) return false;
+    if (!generateAppId(auth, stretching, salt, secdiscardable_hash, &appId)) {
+        err_code = FBE_ERR_GENERATE_APPID;
+        return false;
+    }
     std::string encryptedKey;
     if (auth.usesKeymaster()) {
         Keymaster keymaster;
-        if (!keymaster) return false;
+        if (!keymaster) {
+            err_code = FBE_ERR_KEYMASTER;
+            return false;
+        }
         std::string kmKey;
-        if (!generateKeymasterKey(keymaster, auth, appId, &kmKey)) return false;
-        if (!writeStringToFile(kmKey, dir + "/" + kFn_keymaster_key_blob)) return false;
+        if (!generateKeymasterKey(keymaster, auth, appId, &kmKey)) {
+            err_code = FBE_ERR_GENERATE_KEY;
+            return false;
+        }
+        if (!writeStringToFile(kmKey, dir + "/" + kFn_keymaster_key_blob)) {
+            err_code = FBE_ERR_WRITE_BLOB;
+            return false;
+        }
         km::AuthorizationSet keyParams;
         km::HardwareAuthToken authToken;
         std::tie(keyParams, authToken) = beginParams(auth, appId);
         if (!encryptWithKeymasterKey(keymaster, dir, keyParams, authToken, key, &encryptedKey,
-                                     false))
+                                     false)) {
+            err_code = FBE_ERR_ENCRYPT_KEY;
             return false;
+        }
     } else {
-        if (!encryptWithoutKeymaster(appId, key, &encryptedKey)) return false;
+        if (!encryptWithoutKeymaster(appId, key, &encryptedKey)) {
+            err_code = FBE_ERR_ENCRYPT_NO_KEYMASTER;
+            return false;
+        }
     }
-    if (!writeStringToFile(encryptedKey, dir + "/" + kFn_encrypted_key)) return false;
+    if (!writeStringToFile(encryptedKey, dir + "/" + kFn_encrypted_key)) {
+        err_code = FBE_ERR_WRITE_ENCRYPTED_KEY;
+        return false;
+    }
     if (!FsyncDirectory(dir)) return false;
     return true;
 }
@@ -494,6 +529,7 @@ bool storeKeyAtomically(const std::string& key_path, const std::string& tmp_path
                         const KeyAuthentication& auth, const KeyBuffer& key) {
     if (pathExists(key_path)) {
         LOG(ERROR) << "Already exists, cannot create key at: " << key_path;
+        err_code = FBE_ERR_PATH_EXTSTS;
         return false;
     }
     if (pathExists(tmp_path)) {
@@ -503,6 +539,7 @@ bool storeKeyAtomically(const std::string& key_path, const std::string& tmp_path
     if (!storeKey(tmp_path, auth, key)) return false;
     if (rename(tmp_path.c_str(), key_path.c_str()) != 0) {
         PLOG(ERROR) << "Unable to move new key to location: " << key_path;
+        err_code = FBE_ERR_PATH_RENAME;
         return false;
     }
     LOG(DEBUG) << "Created key: " << key_path;
@@ -512,34 +549,61 @@ bool storeKeyAtomically(const std::string& key_path, const std::string& tmp_path
 bool retrieveKey(const std::string& dir, const KeyAuthentication& auth, KeyBuffer* key,
                  bool keepOld) {
     std::string version;
-    if (!readFileToString(dir + "/" + kFn_version, &version)) return false;
+    if (!readFileToString(dir + "/" + kFn_version, &version)) {
+        err_code = FBE_ERR_READ_VERSION;
+        return false;
+    }
     if (version != kCurrentVersion) {
         LOG(ERROR) << "Version mismatch, expected " << kCurrentVersion << " got " << version;
+        err_code = FBE_ERR_VERSION_MISMATCH;
         return false;
     }
     std::string secdiscardable_hash;
-    if (!readSecdiscardable(dir + "/" + kFn_secdiscardable, &secdiscardable_hash)) return false;
+    if (!readSecdiscardable(dir + "/" + kFn_secdiscardable, &secdiscardable_hash)) {
+        err_code = FBE_ERR_READ_SEC;
+        return false;
+    }
     std::string stretching;
-    if (!readFileToString(dir + "/" + kFn_stretching, &stretching)) return false;
+    if (!readFileToString(dir + "/" + kFn_stretching, &stretching)) {
+        err_code = FBE_ERR_READ_STRETCHING;
+        return false;
+    }
     std::string salt;
     if (stretchingNeedsSalt(stretching)) {
-        if (!readFileToString(dir + "/" + kFn_salt, &salt)) return false;
+        if (!readFileToString(dir + "/" + kFn_salt, &salt)) {
+            err_code = FBE_ERR_READ_SALT;
+            return false;
+        }
     }
     std::string appId;
-    if (!generateAppId(auth, stretching, salt, secdiscardable_hash, &appId)) return false;
+    if (!generateAppId(auth, stretching, salt, secdiscardable_hash, &appId)) {
+        err_code = FBE_ERR_GENERATE_APPID;
+        return false;
+    }
     std::string encryptedMessage;
-    if (!readFileToString(dir + "/" + kFn_encrypted_key, &encryptedMessage)) return false;
+    if (!readFileToString(dir + "/" + kFn_encrypted_key, &encryptedMessage)) {
+        err_code = FBE_ERR_READ_ENCRYPTED_KEY;
+        return false;
+    }
     if (auth.usesKeymaster()) {
         Keymaster keymaster;
-        if (!keymaster) return false;
+        if (!keymaster) {
+            err_code = FBE_ERR_KEYMASTER;
+            return false;
+        }
         km::AuthorizationSet keyParams;
         km::HardwareAuthToken authToken;
         std::tie(keyParams, authToken) = beginParams(auth, appId);
         if (!decryptWithKeymasterKey(keymaster, dir, keyParams, authToken, encryptedMessage, key,
-                                     keepOld))
+                                     keepOld)) {
+            err_code = FBE_ERR_DECRYPT_KEY;
             return false;
+        }
     } else {
-        if (!decryptWithoutKeymaster(appId, encryptedMessage, key)) return false;
+        if (!decryptWithoutKeymaster(appId, encryptedMessage, key)) {
+            err_code = FBE_ERR_DECRYPT_NO_KEYMASTER;
+            return false;
+        }
     }
     return true;
 }

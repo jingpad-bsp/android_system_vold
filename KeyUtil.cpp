@@ -158,11 +158,15 @@ bool retrieveAndInstallKey(bool create_if_absent, const KeyAuthentication& key_a
         }
         LOG(INFO) << "Creating new key in " << key_path;
         if (!randomKey(&key)) return false;
-        if (!storeKeyAtomically(key_path, tmp_path, key_authentication, key)) return false;
+        if (!storeKeyAtomically(key_path, tmp_path, key_authentication, key)) {
+            err_code = FBE_ERR_RANDOM_KEY;
+            return false;
+        }
     }
 
     if (!installKey(key, key_ref)) {
         LOG(ERROR) << "Failed to install key in " << key_path;
+        err_code = FBE_ERR_INSTALL_KEY;
         return false;
     }
     return true;

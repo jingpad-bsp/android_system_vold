@@ -8,6 +8,7 @@ cc_defaults {
         "-Wno-missing-field-initializers",
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
+        "-DVOLD_EX",
     ],
 
     clang: true,
@@ -123,6 +124,7 @@ cc_library_static {
         "VolumeManager.cpp",
         "cryptfs.cpp",
         "fs/Exfat.cpp",
+	"fs/Ntfs.cpp",
         "fs/Ext4.cpp",
         "fs/F2fs.cpp",
         "fs/Vfat.cpp",

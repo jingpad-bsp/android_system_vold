@@ -76,6 +76,11 @@ class VolumeBase {
         kUnmountable,
         kRemoved,
         kBadRemoval,
+#ifdef VOLD_EX
+        /* SPRD: add for UMS @{ */
+        kShared,
+        /* @} */
+ #endif
     };
 
     const std::string& getId() const { return mId; }
@@ -108,6 +113,10 @@ class VolumeBase {
     status_t format(const std::string& fsType);
 
     std::ostream& operator<<(std::ostream& stream) const;
+
+#ifdef VOLD_EX
+#include "VolumeBaseEx.h"
+#endif
 
   protected:
     explicit VolumeBase(Type type);

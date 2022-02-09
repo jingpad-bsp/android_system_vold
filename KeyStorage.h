@@ -24,6 +24,38 @@
 namespace android {
 namespace vold {
 
+enum {
+    FBE_ERR_OK = 0,
+    FBE_ERR_STORE_KEY = 1,
+    FBE_ERR_RETRIEVE_KEY = 2,
+    FBE_ERR_RANDOM_KEY = 3,
+    FBE_ERR_INSTALL_KEY = 4,
+    FBE_ERR_KEYMASTER = 5,
+    FBE_ERR_GENERATE_KEY = 6,
+    FBE_ERR_ENCRYPT_KEY = 7,
+    FBE_ERR_DECRYPT_KEY = 8,
+    FBE_ERR_WRITE_VERSION = 9,
+    FBE_ERR_WRITE_SEC = 10,
+    FBE_ERR_WRITE_STRETCHING = 11,
+    FBE_ERR_WRITE_SALT = 12,
+    FBE_ERR_WRITE_BLOB = 13,
+    FBE_ERR_WRITE_ENCRYPTED_KEY = 14,
+    FBE_ERR_READ_VERSION = 15,
+    FBE_ERR_READ_SEC = 16,
+    FBE_ERR_READ_STRETCHING = 17,
+    FBE_ERR_READ_SALT = 18,
+    FBE_ERR_READ_BLOB = 19,
+    FBE_ERR_READ_ENCRYPTED_KEY = 20,
+    FBE_ERR_PATH_MKDIR = 21,
+    FBE_ERR_PATH_EXTSTS = 22,
+    FBE_ERR_PATH_RENAME = 23,
+    FBE_ERR_RANDOM_READ = 24,
+    FBE_ERR_GENERATE_APPID = 25,
+    FBE_ERR_VERSION_MISMATCH = 26,
+    FBE_ERR_ENCRYPT_NO_KEYMASTER = 27,
+    FBE_ERR_DECRYPT_NO_KEYMASTER = 28,
+};
+
 // Represents the information needed to decrypt a disk encryption key.
 // If "token" is nonempty, it is passed in as a required Gatekeeper auth token.
 // If "token" and "secret" are nonempty, "secret" is appended to the application-specific
@@ -39,6 +71,7 @@ class KeyAuthentication {
     const std::string secret;
 };
 
+extern int err_code;
 extern const KeyAuthentication kEmptyAuthentication;
 
 // Checks if path "path" exists.

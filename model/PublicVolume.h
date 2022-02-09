@@ -43,6 +43,9 @@ class PublicVolume : public VolumeBase {
     virtual ~PublicVolume();
 
   protected:
+#ifdef VOLD_EX
+#include "PublicVolumeEx.h"
+#endif
     status_t doCreate() override;
     status_t doDestroy() override;
     status_t doMount() override;

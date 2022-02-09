@@ -68,6 +68,18 @@
 #include "model/EmulatedVolume.h"
 #include "model/ObbVolume.h"
 #include "model/StubVolume.h"
+#ifdef VOLD_EX
+#ifdef UMS
+/* SPRD: add for UMS @{ */
+#define MASS_STORAGE_FILE_PATH_SYSFS  "/sys/class/android_usb/android0/f_mass_storage/lun/file"
+#define MASS_STORAGE_FILE_PATH_CONFIGFS  "/config/usb_gadget/g1/functions/mass_storage.gs6/lun.0/file"
+#define USB_FUNCTION_CONFIG "sys.usb.config"
+#define USB_STATE          "sys.usb.state"
+#define USB_FUNCTION_MASS_STORAGE "mass_storage"
+#define USB_FUNCTION_NONE    "none"
+/* @} */
+#endif
+#endif
 
 using android::OK;
 using android::base::GetBoolProperty;
@@ -112,6 +124,18 @@ VolumeManager::VolumeManager() {
     // For security reasons, assume that a secure keyguard is
     // showing until we hear otherwise
     mSecureKeyguardShowing = true;
+#ifdef VOLD_EX
+#ifdef UMS
+    /* SPRD: add for UMS @{ */
+    mUmsSharePrepareCount = 0;
+    mUmsSharedCount = 0;
+    mUsbFunction = "";
+    mUsbState = "";
+    mPlugReset = false;
+    mUsbDataUnlocked = false;
+    /* @} */
+#endif
+#endif
 }
 
 VolumeManager::~VolumeManager() {}
@@ -754,3 +778,6 @@ int VolumeManager::unmountAppFuse(uid_t uid, int mountId) {
 int VolumeManager::openAppFuseFile(uid_t uid, int mountId, int fileId, int flags) {
     return android::vold::OpenAppFuseFile(uid, mountId, fileId, flags);
 }
+#ifdef VOLD_EX
+#include "VolumeManagerEx.cpp"
+#endif

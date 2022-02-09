@@ -47,6 +47,10 @@ VolumeBase::~VolumeBase() {
 void VolumeBase::setState(State state) {
     mState = state;
 
+#ifdef VOLD_EX
+    /* SPRD: add for storage */
+    doSetState(state);
+#endif
     auto listener = getListener();
     if (listener) {
         listener->onVolumeStateChanged(getId(), static_cast<int32_t>(mState));
@@ -175,10 +179,21 @@ status_t VolumeBase::create() {
     status_t res = doCreate();
 
     auto listener = getListener();
+#ifdef VOLD_EX
+    /* SPRD: add this to fix a problem */
+    mState = State::kUnmounted;
+#ifdef UMS
+    mHasMounted = false;
+#endif
+    if (listener) {
+        listener->onSprdVolumeCreated(getId(), static_cast<int32_t>(mType), mDiskId, mPartGuid, mLinkname);
+    }
+#else
     if (listener) {
         listener->onVolumeCreated(getId(), static_cast<int32_t>(mType), mDiskId, mPartGuid);
     }
 
+#endif
     setState(State::kUnmounted);
     return res;
 }
@@ -193,6 +208,20 @@ status_t VolumeBase::destroy() {
     if (mState == State::kMounted) {
         unmount();
         setState(State::kBadRemoval);
+#ifdef VOLD_EX
+#ifdef UMS
+    /* SPRD: add for UMS @{ */
+    } else if (mState == State::kShared) {
+            doUnshare();
+            LOG(WARNING) << "The state is shared ,need to be unshared";
+            VolumeManager *vm = VolumeManager::Instance();
+            vm->mUmsSharedCount = 0;
+            vm->mUmsShareIndex = -1;
+            vm->mUmsSharePrepareCount = 0;
+            setState(State::kBadRemoval);
+    /* @} */
+#endif
+#endif
     } else {
         setState(State::kRemoved);
     }
@@ -204,6 +233,11 @@ status_t VolumeBase::destroy() {
 
     status_t res = doDestroy();
     mCreated = false;
+#ifdef VOLD_EX
+#ifdef UMS
+    mHasMounted = false;
+#endif
+#endif
     return res;
 }
 
@@ -219,6 +253,11 @@ status_t VolumeBase::mount() {
 
     setState(State::kChecking);
     status_t res = doMount();
+#ifdef VOLD_EX
+#ifdef UMS
+        if (res == OK) mHasMounted = true;
+#endif
+#endif
     setState(res == OK ? State::kMounted : State::kUnmountable);
 
     return res;
@@ -248,6 +287,16 @@ status_t VolumeBase::format(const std::string& fsType) {
         unmount();
     }
 
+#ifdef VOLD_EX
+#ifdef UMS
+    /* SPRD: add for UMS @{ */
+    if (mState == State::kShared) {
+        unshare();
+    }
+    /* @} */
+#endif
+#endif
+
     if ((mState != State::kUnmounted) && (mState != State::kUnmountable)) {
         LOG(WARNING) << getId() << " format requires state unmounted or unmountable";
         return -EBUSY;
@@ -256,6 +305,11 @@ status_t VolumeBase::format(const std::string& fsType) {
     setState(State::kFormatting);
     status_t res = doFormat(fsType);
     setState(State::kUnmounted);
+#ifdef VOLD_EX
+#ifdef UMS
+    mHasMounted = false;
+#endif
+#endif
     return res;
 }
 
@@ -267,6 +321,9 @@ std::ostream& VolumeBase::operator<<(std::ostream& stream) const {
     return stream << " VolumeBase{id=" << mId << ",mountFlags=" << mMountFlags
                   << ",mountUserId=" << mMountUserId << "}";
 }
+#ifdef VOLD_EX
+#include "VolumeBaseEx.cpp"
+#endif
 
 }  // namespace vold
 }  // namespace android

@@ -138,6 +138,7 @@ status_t PrepareDir(const std::string& path, mode_t mode, uid_t uid, gid_t gid) 
     }
 }
 
+#ifndef VOLD_EX
 status_t ForceUnmount(const std::string& path) {
     const char* cpath = path.c_str();
     if (!umount2(cpath, UMOUNT_NOFOLLOW) || errno == EINVAL || errno == ENOENT) {
@@ -167,6 +168,7 @@ status_t ForceUnmount(const std::string& path) {
 
     return -errno;
 }
+#endif
 
 status_t KillProcessesUsingPath(const std::string& path) {
     if (KillProcessesWithOpenFiles(path, SIGINT) == 0) {
@@ -984,5 +986,8 @@ bool writeStringToFile(const std::string& payload, const std::string& filename) 
     return true;
 }
 
+#ifdef VOLD_EX
+#include "UtilsEx.cpp"
+#endif
 }  // namespace vold
 }  // namespace android

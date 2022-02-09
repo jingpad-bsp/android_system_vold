@@ -19,11 +19,16 @@
 #include "VolumeManager.h"
 #include "fs/Exfat.h"
 #include "fs/Vfat.h"
+#include "fs/Ntfs.h"
 
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <cutils/fs.h>
+#ifdef VOLD_EX
+/* SPRD: add for physical external SD */
+#include <cutils/properties.h>
+#endif
 #include <private/android_filesystem_config.h>
 #include <utils/Timers.h>
 
@@ -105,6 +110,11 @@ status_t PublicVolume::doMount() {
             LOG(ERROR) << getId() << " failed filesystem check";
             return -EIO;
         }
+    } else if (mFsType == "ntfs" && ntfs::IsSupported()) {
+        if (ntfs::Check(mDevPath)) {
+            LOG(ERROR) << getId() << "  ntfs failed check";
+            return -EIO;
+        }
     } else {
         LOG(ERROR) << getId() << " unsupported filesystem " << mFsType;
         return -EIO;
@@ -141,12 +151,29 @@ status_t PublicVolume::doMount() {
             PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
             return -EIO;
         }
+    } else if(mFsType == "ntfs") {
+        if (ntfs::Mount(mDevPath, mRawPath, false, false, false,
+                        AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+            PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
+            return -EIO;
+        }
     } else if (mFsType == "exfat") {
         if (exfat::Mount(mDevPath, mRawPath, AID_MEDIA_RW, AID_MEDIA_RW, 0007)) {
             PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
             return -EIO;
         }
     }
+
+#ifdef UMS
+    if(android::vold::getSupportUms()) {
+        VolumeManager *vm = VolumeManager::Instance();
+        auto disk = vm->findDisk(getDiskId());
+        if(disk && disk->getFlags() & android::vold::Disk::Flags::kSd && !disk->mVolumeHasMounted) {
+            vm->ifResetUms();
+        }
+        disk->mVolumeHasMounted = true;
+    }
+#endif
 
     if (getMountFlags() & MountFlags::kPrimary) {
         initAsecStage();
@@ -164,6 +191,8 @@ status_t PublicVolume::doMount() {
         PLOG(ERROR) << getId() << " failed to create FUSE mount points";
         return -errno;
     }
+
+    createSymlink(stableName);
 
     dev_t before = GetDevice(mFuseFull);
 
@@ -227,10 +256,13 @@ status_t PublicVolume::doUnmount() {
     // the FUSE process first, most file system operations will return
     // ENOTCONN until the unmount completes. This is an exotic and unusual
     // error code and might cause broken behaviour in applications.
-    KillProcessesUsingPath(getPath());
+    //KillProcessesUsingPath(getPath());
 
     ForceUnmount(kAsecPath);
 
+#ifdef VOLD_EX
+    deleteSymlink();
+#endif
     ForceUnmount(mFuseDefault);
     ForceUnmount(mFuseRead);
     ForceUnmount(mFuseWrite);
@@ -284,11 +316,10 @@ status_t PublicVolume::doFormat(const std::string& fsType) {
         return -EINVAL;
     }
 
-    if (WipeBlockDevice(mDevPath) != OK) {
-        LOG(WARNING) << getId() << " failed to wipe";
-    }
-
     if (useVfat) {
+        if (WipeBlockDevice(mDevPath) != OK) {
+            LOG(WARNING) << getId() << " failed to wipe";
+        }
         res = vfat::Format(mDevPath, 0);
     } else if (useExfat) {
         res = exfat::Format(mDevPath);
@@ -302,5 +333,8 @@ status_t PublicVolume::doFormat(const std::string& fsType) {
     return res;
 }
 
+#ifdef VOLD_EX
+#include "PublicVolumeEx.cpp"
+#endif
 }  // namespace vold
 }  // namespace android

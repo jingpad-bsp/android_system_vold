@@ -81,6 +81,7 @@ static bool checkSymlink(const std::string& path, const std::string& prefix) {
     return false;
 }
 
+#ifndef VOLD_EX
 int KillProcessesWithOpenFiles(const std::string& prefix, int signal) {
     std::unordered_set<pid_t> pids;
 
@@ -129,6 +130,11 @@ int KillProcessesWithOpenFiles(const std::string& prefix, int signal) {
     }
     return pids.size();
 }
+#endif
+
+#ifdef VOLD_EX
+#include "ProcessEx.cpp"
+#endif
 
 }  // namespace vold
 }  // namespace android

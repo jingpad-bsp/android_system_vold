@@ -62,19 +62,20 @@ int Loop::create(const std::string& target, std::string& out_device) {
 
     out_device = StringPrintf("/dev/block/loop%d", num);
 
-    unique_fd target_fd;
-    for (size_t i = 0; i != kLoopDeviceRetryAttempts; ++i) {
-        target_fd.reset(open(target.c_str(), O_RDWR | O_CLOEXEC));
-        if (target_fd.get() != -1) {
-            break;
-        }
-        usleep(50000);
-    }
+    unique_fd target_fd(open(target.c_str(), O_RDWR | O_CLOEXEC));
     if (target_fd.get() == -1) {
         PLOG(ERROR) << "Failed to open " << target;
         return -errno;
     }
-    unique_fd device_fd(open(out_device.c_str(), O_RDWR | O_CLOEXEC));
+    unique_fd device_fd;
+    for (size_t i = 0; i != kLoopDeviceRetryAttempts; ++i) {
+        device_fd.reset(open(out_device.c_str(), O_RDWR | O_CLOEXEC));
+        if (device_fd.get() != -1) {
+            break;
+        }
+        LOG(INFO) << out_device << " is not ready, retry";
+        usleep(50000);
+    }
     if (device_fd.get() == -1) {
         PLOG(ERROR) << "Failed to open " << out_device;
         return -errno;

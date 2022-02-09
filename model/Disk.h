@@ -113,6 +113,9 @@ class Disk {
     int getMaxMinors();
 
     DISALLOW_COPY_AND_ASSIGN(Disk);
+    #ifdef VOLD_EX
+    #include "DiskEx.h"
+    #endif
 };
 
 }  // namespace vold
